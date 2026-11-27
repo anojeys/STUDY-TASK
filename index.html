@@ -3,28 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Student Study & Task Management System</title>
+  <title>StudyFlow — Guagua National Colleges</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
   <!-- AUTHENTICATION SCREEN -->
   <section id="auth-section" class="auth-wrapper">
+    <div class="auth-overlay"></div>
     <div class="auth-card">
       <div class="brand-header">
+        <img src="Media.jpg" alt="Guagua National Colleges Logo" class="brand-logo" />
         <h1>StudyFlow</h1>
-        <p>Web-Based Student Study & Task Management System</p>
+        <p>Guagua National Colleges • Student Study &amp; Task Management System</p>
       </div>
 
       <div class="auth-tabs">
-        <button id="tab-login" class="active" onclick="switchAuthTab('login')">Login</button>
-        <button id="tab-register" onclick="switchAuthTab('register')">Register</button>
+        <button type="button" id="tab-login" class="active" onclick="switchAuthTab('login')">Login</button>
+        <button type="button" id="tab-register" onclick="switchAuthTab('register')">Register</button>
       </div>
 
       <!-- Login Form -->
       <form id="login-form" class="auth-form">
         <div class="form-group">
-          <label for="login-email">Student Email</label>
+          <label for="login-email">Student / Admin Email</label>
           <input type="email" id="login-email" placeholder="student@gnc.edu.ph" required />
         </div>
         <div class="form-group">
@@ -32,7 +34,7 @@
           <input type="password" id="login-password" placeholder="Enter password" required />
         </div>
         <button type="submit" class="btn btn-primary btn-block">Sign In</button>
-        <p class="demo-hint">Demo account: <strong>student@gnc.edu.ph</strong> / <strong>123456</strong></p>
+        <p class="demo-hint">Admin demo account: <strong>student@gnc.edu.ph</strong> / <strong>123456</strong></p>
       </form>
 
       <!-- Register Form -->
@@ -53,7 +55,7 @@
           <label for="reg-invite-code">Registration Security Code (if required)</label>
           <input type="text" id="reg-invite-code" placeholder="Optional or Admin Code" />
         </div>
-        <p class="demo-hint">New accounts require administrator acceptance before logging in.</p>
+        <p class="demo-hint">New accounts require administrator verification and approval before logging in.</p>
         <button type="submit" class="btn btn-primary btn-block">Request Account</button>
       </form>
     </div>
@@ -64,20 +66,23 @@
     <!-- Sidebar Navigation -->
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <h2>StudyFlow</h2>
-        <span class="badge">Student Portal</span>
+        <img src="Media.jpg" alt="GNC Logo" class="sidebar-logo" />
+        <div>
+          <h2>StudyFlow</h2>
+          <span id="role-badge" class="badge">GNC Portal</span>
+        </div>
       </div>
       <nav class="sidebar-nav">
-        <button class="nav-btn active" data-view="dashboard" onclick="switchView('dashboard')">📊 Dashboard</button>
-        <button class="nav-btn" data-view="tasks" onclick="switchView('tasks')">📝 Task Management</button>
-        <button class="nav-btn" data-view="schedule" onclick="switchView('schedule')">📅 Study Schedule</button>
+        <button type="button" class="nav-btn active" data-view="dashboard" onclick="switchView('dashboard')">📊 Dashboard</button>
+        <button type="button" class="nav-btn" data-view="tasks" onclick="switchView('tasks')">📝 Task Management</button>
+        <button type="button" class="nav-btn" data-view="schedule" onclick="switchView('schedule')">📅 Study Schedule</button>
       </nav>
       <div class="sidebar-footer">
         <div class="user-info">
           <strong id="user-display-name">Student Name</strong>
           <small id="user-display-email">student@gnc.edu.ph</small>
         </div>
-        <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
       </div>
     </aside>
 
@@ -86,7 +91,7 @@
       <!-- Top Bar -->
       <header class="topbar">
         <h1 id="page-title">Dashboard Overview</h1>
-        <button class="btn btn-secondary btn-sm" onclick="exportJSON()">⬇ Export Data (JSON)</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="exportJSON()">⬇ Export Data (JSON)</button>
       </header>
 
       <!-- VIEW 1: CENTRALIZED DASHBOARD -->
@@ -94,10 +99,10 @@
         <!-- Deadline Alert Banner -->
         <div id="deadline-alert" class="alert-banner hidden"></div>
 
-        <!-- Pending Account Registrations -->
+        <!-- Pending Account Registrations (Admin Verification) -->
         <div class="card" id="pending-approvals-card">
           <div class="card-header">
-            <h3>🛡️ Pending Account Registrations</h3>
+            <h3>🛡️ Admin Account Verification</h3>
             <span id="pending-count-badge" class="badge">0 Pending</span>
           </div>
           <ul id="pending-registrations-list" class="clean-list"></ul>
@@ -134,7 +139,7 @@
           </div>
         </div>
 
-        <!-- Upcoming Deadlines & Today's Study Plan -->
+        <!-- Upcoming Deadlines & Study Plan -->
         <div class="two-col-grid">
           <div class="card">
             <h3>⏰ Upcoming Deadlines</h3>
@@ -211,7 +216,7 @@
             <table>
               <thead>
                 <tr>
-                  <th>Task & Subject</th>
+                  <th>Task &amp; Subject</th>
                   <th>Due Date</th>
                   <th>Priority</th>
                   <th>Status</th>
@@ -263,6 +268,6 @@
     </main>
   </div>
 
-  <script src="app.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
