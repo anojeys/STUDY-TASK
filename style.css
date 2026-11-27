@@ -4,7 +4,7 @@
   --accent-gold: #ca8a04;    /* GNC Gold Accent */
   --accent-red: #b91c1c;     /* GNC Crimson Accent */
   --bg: #eef3ef;
-  --surface: rgba(255, 255, 255, 0.95);
+  --surface: rgba(255, 255, 255, 0.96);
   --text: #14261c;
   --muted: #4b6354;
   --border: #d1ddd5;
@@ -31,6 +31,34 @@ body {
   display: none !important;
 }
 
+/* Feedback Banner */
+.feedback-banner {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.feedback-info {
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-color: #bfdbfe;
+}
+
+.feedback-success {
+  background: #f0fdf4;
+  color: #14532d;
+  border-color: #bbf7d0;
+}
+
+.feedback-error {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
 /* Authentication with GNC Background Image */
 .auth-wrapper {
   position: relative;
@@ -39,11 +67,14 @@ body {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: url("images.jpg") center center / cover no-repeat fixed;
+  background-image: url("images.jpg");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 
 .auth-overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   background: linear-gradient(135deg, rgba(20, 83, 45, 0.78), rgba(15, 23, 42, 0.72));
   z-index: 0;
@@ -53,7 +84,6 @@ body {
   position: relative;
   z-index: 1;
   background: var(--surface);
-  backdrop-filter: blur(8px);
   width: 100%;
   max-width: 430px;
   padding: 2rem;
@@ -64,7 +94,7 @@ body {
 
 .brand-header {
   text-align: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .brand-logo {
@@ -76,7 +106,31 @@ body {
   padding: 4px;
   border: 3px solid var(--accent-gold);
   box-shadow: 0 4px 12px rgba(20, 83, 45, 0.22);
+  margin: 0 auto 0.65rem;
+  display: block;
+}
+
+.logo-fallback {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #ffffff;
+  border: 3px solid var(--accent-gold);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.25rem;
   margin-bottom: 0.65rem;
+}
+
+.logo-fallback-sm {
+  width: 48px;
+  height: 48px;
+  font-size: 0.85rem;
+  margin-bottom: 0;
+  flex-shrink: 0;
 }
 
 .brand-header h1 {
@@ -123,7 +177,10 @@ body {
   position: relative;
   display: flex;
   min-height: 100vh;
-  background: url("images.jpg") center center / cover no-repeat fixed;
+  background-image: url("images.jpg");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 
 .app-layout::before {
@@ -236,7 +293,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
   flex-wrap: wrap;
   gap: 0.75rem;
 }
@@ -244,6 +301,12 @@ body {
 .topbar h1 {
   font-size: 1.5rem;
   color: var(--primary);
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 /* Cards & Grids */
