@@ -1,265 +1,475 @@
-const STORAGE_KEY = "studyflow_data_v1";
-// Optional: set a non-empty string if you also want to require a secret code on registration
-const REQUIRED_REG_CODE = ""; // e.g., "GNC-2026-ACCEPT"
-
-const DEFAULT_SEED_DATA = {
-  users: [
-    {
-      name: "Juan Dela Cruz",
-      email: "student@gnc.edu.ph",
-      password: "123456",
-      role: "admin",
-      status: "approved"
-    }
-  ],
-  tasks: [
-    {
-      id: 1700000001,
-      title: "Finalize Capstone Chapter 1 & IPO Framework",
-      subject: "Capstone Project 1",
-      deadline: "2026-11-24",
-      priority: "High",
-      status: "Ongoing"
-    },
-    {
-      id: 1700000002,
-      title: "Database Normalization Quiz Review",
-      subject: "Information Management",
-      deadline: "2026-11-26",
-      priority: "Medium",
-      status: "Pending"
-    },
-    {
-      id: 1700000003,
-      title: "Submit System Prototype Wireframes",
-      subject: "Human-Computer Interaction",
-      deadline: "2026-11-20",
-      priority: "High",
-      status: "Completed"
-    }
-  ],
-  schedules: [
-    {
-      id: 2700000001,
-      day: "Monday",
-      time: "6:00 PM - 8:00 PM",
-      subject: "Capstone System Development"
-    },
-    {
-      id: 2700000002,
-      day: "Wednesday",
-      time: "4:00 PM - 6:00 PM",
-      subject: "Information Management"
-    },
-    {
-      id: 2700000003,
-      day: "Saturday",
-      time: "9:00 AM - 11:30 AM",
-      subject: "Research & Documentation"
-    }
-  ]
-};
-
-function loadSystemData() {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
-    try {
-      return JSON.parse(saved);
-    } catch {
-      return structuredClone(DEFAULT_SEED_DATA);
-    }
-  }
-  return structuredClone(DEFAULT_SEED_DATA);
+:root {
+  --primary: #14532d;        /* GNC Deep Forest Green */
+  --primary-dark: #0f3d21;   /* Darker Green Hover */
+  --accent-gold: #ca8a04;    /* GNC Gold Accent */
+  --accent-red: #b91c1c;     /* GNC Crimson Accent */
+  --bg: #eef3ef;
+  --surface: rgba(255, 255, 255, 0.95);
+  --text: #14261c;
+  --muted: #4b6354;
+  --border: #d1ddd5;
+  --success: #15803d;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #0369a1;
 }
 
-let db = loadSystemData();
-let currentUser = null;
-
-function saveSystemData() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 
-// Switch between Login and Register tabs
-function switchAuthTab(tab) {
-  const isLogin = tab === "login";
-  document.getElementById("tab-login")?.classList.toggle("active", isLogin);
-  document.getElementById("tab-register")?.classList.toggle("active", !isLogin);
-  document.getElementById("login-form")?.classList.toggle("hidden", !isLogin);
-  document.getElementById("register-form")?.classList.toggle("hidden", isLogin);
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
 }
 
-// Switch sidebar views
-function switchView(viewName) {
-  document.querySelectorAll(".view-section").forEach((sec) => sec.classList.add("hidden"));
-  document.getElementById(`view-${viewName}`)?.classList.remove("hidden");
-
-  document.querySelectorAll(".nav-btn").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.view === viewName);
-  });
-
-  const titles = {
-    dashboard: "Dashboard Overview",
-    tasks: "Task Management",
-    schedule: "Study Schedule"
-  };
-  const pageTitle = document.getElementById("page-title");
-  if (pageTitle && titles[viewName]) {
-    pageTitle.textContent = titles[viewName];
-  }
-
-  if (viewName === "dashboard") {
-    renderPendingRegistrations();
-  }
+.hidden {
+  display: none !important;
 }
 
-function logout() {
-  currentUser = null;
-  document.getElementById("app-section")?.classList.add("hidden");
-  document.getElementById("auth-section")?.classList.remove("hidden");
-  switchAuthTab("login");
+/* Authentication with GNC Background Image */
+.auth-wrapper {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: url("images.jpg") center center / cover no-repeat fixed;
 }
 
-function exportJSON() {
-  const blob = new Blob([JSON.stringify(db, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "studyflow-backup.json";
-  a.click();
-  URL.revokeObjectURL(url);
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(20, 83, 45, 0.78), rgba(15, 23, 42, 0.72));
+  z-index: 0;
 }
 
-// Handle Registration (Requires Acceptance)
-document.getElementById("register-form")?.addEventListener("submit", (e) => {
-  e.preventDefault();
-
-  const name = document.getElementById("reg-name").value.trim();
-  const email = document.getElementById("reg-email").value.trim().toLowerCase();
-  const password = document.getElementById("reg-password").value;
-  const code = document.getElementById("reg-invite-code")?.value.trim() || "";
-
-  if (password.length < 6) {
-    alert("Password must be at least 6 characters long.");
-    return;
-  }
-
-  if (REQUIRED_REG_CODE && code !== REQUIRED_REG_CODE) {
-    alert("Invalid registration security code. Registration rejected.");
-    return;
-  }
-
-  const exists = db.users.some((u) => u.email.toLowerCase() === email);
-  if (exists) {
-    alert("An account with this email already exists or is pending approval.");
-    return;
-  }
-
-  db.users.push({
-    name,
-    email,
-    password,
-    role: "student",
-    status: "pending"
-  });
-
-  saveSystemData();
-  e.target.reset();
-  renderPendingRegistrations();
-  switchAuthTab("login");
-  alert("Registration submitted! Your account is pending acceptance before you can sign in.");
-});
-
-// Handle Login (Blocks Unaccepted Accounts)
-document.getElementById("login-form")?.addEventListener("submit", (e) => {
-  e.preventDefault();
-
-  const email = document.getElementById("login-email").value.trim().toLowerCase();
-  const password = document.getElementById("login-password").value;
-
-  const user = db.users.find(
-    (u) => u.email.toLowerCase() === email && u.password === password
-  );
-
-  if (!user) {
-    alert("Invalid email or password.");
-    return;
-  }
-
-  if (user.status !== "approved") {
-    alert("Your account has not been accepted yet. Please wait for approval.");
-    return;
-  }
-
-  currentUser = user;
-  document.getElementById("auth-section").classList.add("hidden");
-  document.getElementById("app-section").classList.remove("hidden");
-  document.getElementById("user-display-name").textContent = user.name;
-  document.getElementById("user-display-email").textContent = user.email;
-  renderPendingRegistrations();
-});
-
-// Accept a Pending Registration
-function acceptRegistration(email) {
-  const user = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-  if (!user) return;
-
-  user.status = "approved";
-  saveSystemData();
-  renderPendingRegistrations();
-  alert(`Accepted account for ${user.name} (${user.email}).`);
+.auth-card {
+  position: relative;
+  z-index: 1;
+  background: var(--surface);
+  backdrop-filter: blur(8px);
+  width: 100%;
+  max-width: 430px;
+  padding: 2rem;
+  border-radius: 14px;
+  border-top: 5px solid var(--primary);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
 }
 
-// Reject / Remove a Pending Registration
-function rejectRegistration(email) {
-  const index = db.users.findIndex((u) => u.email.toLowerCase() === email.toLowerCase());
-  if (index === -1) return;
-
-  const removed = db.users[index];
-  db.users.splice(index, 1);
-  saveSystemData();
-  renderPendingRegistrations();
-  alert(`Rejected and removed registration for ${removed.email}.`);
+.brand-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
 }
 
-// Render Pending Registrations List
-function renderPendingRegistrations() {
-  const list = document.getElementById("pending-registrations-list");
-  const badge = document.getElementById("pending-count-badge");
-  if (!list || !badge) return;
-
-  const pendingUsers = db.users.filter((u) => u.status === "pending");
-  badge.textContent = `${pendingUsers.length} Pending`;
-
-  if (pendingUsers.length === 0) {
-    list.innerHTML = `<li><span>No pending registrations to review.</span></li>`;
-    return;
-  }
-
-  list.innerHTML = pendingUsers
-    .map(
-      (u) => `
-      <li>
-        <div>
-          <strong>${escapeHTML(u.name)}</strong><br />
-          <small>${escapeHTML(u.email)}</small>
-        </div>
-        <div class="action-group">
-          <button class="btn btn-primary btn-sm" onclick="acceptRegistration('${escapeHTML(u.email)}')">Accept</button>
-          <button class="btn btn-danger btn-sm" onclick="rejectRegistration('${escapeHTML(u.email)}')">Reject</button>
-        </div>
-      </li>
-    `
-    )
-    .join("");
+.brand-logo {
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
+  border-radius: 50%;
+  background: #ffffff;
+  padding: 4px;
+  border: 3px solid var(--accent-gold);
+  box-shadow: 0 4px 12px rgba(20, 83, 45, 0.22);
+  margin-bottom: 0.65rem;
 }
 
-function escapeHTML(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+.brand-header h1 {
+  color: var(--primary);
+  font-size: 1.8rem;
 }
 
-renderPendingRegistrations();
+.brand-header p {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.auth-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 1.25rem;
+}
+
+.auth-tabs button {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 0.6rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.auth-tabs button.active {
+  color: var(--primary);
+  border-bottom: 2px solid var(--primary);
+  margin-bottom: -2px;
+}
+
+.demo-hint {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* Main App Layout with Subtle GNC Background */
+.app-layout {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  background: url("images.jpg") center center / cover no-repeat fixed;
+}
+
+.app-layout::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(238, 243, 239, 0.9);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.sidebar {
+  position: relative;
+  z-index: 1;
+  width: 260px;
+  background: linear-gradient(180deg, #14532d 0%, #0d2818 100%);
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 1rem;
+  border-right: 3px solid var(--accent-gold);
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+  padding: 0 0.35rem;
+}
+
+.sidebar-logo {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 50%;
+  background: #ffffff;
+  padding: 2px;
+  border: 2px solid var(--accent-gold);
+  flex-shrink: 0;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  background: var(--accent-gold);
+  color: #14261c;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-top: 4px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.nav-btn {
+  background: transparent;
+  border: none;
+  color: #dcfce7;
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.nav-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.nav-btn.active {
+  background: var(--accent-gold);
+  color: #14261c;
+  font-weight: 700;
+}
+
+.sidebar-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.user-info strong {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.user-info small {
+  color: #bbf7d0;
+  font-size: 0.78rem;
+}
+
+.main-content {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  padding: 1.5rem 2rem;
+  overflow-y: auto;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.topbar h1 {
+  font-size: 1.5rem;
+  color: var(--primary);
+}
+
+/* Cards & Grids */
+.card {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 1.25rem;
+  box-shadow: 0 2px 6px rgba(20, 83, 45, 0.08);
+  border: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.stat-card {
+  background: var(--surface);
+  padding: 1.2rem;
+  border-radius: 10px;
+  border-left: 4px solid var(--primary);
+  box-shadow: 0 2px 6px rgba(20, 83, 45, 0.08);
+}
+
+.stat-card.warning { border-left-color: var(--warning); }
+.stat-card.info { border-left-color: var(--info); }
+.stat-card.success { border-left-color: var(--success); }
+
+.stat-card span {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.stat-card h2 {
+  font-size: 1.8rem;
+  margin-top: 0.25rem;
+}
+
+.two-col-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.25rem;
+}
+
+/* Alert & Progress */
+.alert-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: var(--accent-red);
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.25rem;
+  font-weight: 500;
+}
+
+.progress-track {
+  width: 100%;
+  height: 12px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--primary), var(--accent-gold));
+  transition: width 0.3s ease;
+}
+
+/* Forms & Buttons */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0.9rem;
+}
+
+.form-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+input, select {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.92rem;
+  background: #ffffff;
+}
+
+input:focus, select:focus {
+  outline: 2px solid rgba(20, 83, 45, 0.25);
+  border-color: var(--primary);
+}
+
+.grid-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.85rem;
+  align-items: end;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+
+.filters {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: 0.15s;
+}
+
+.btn-block { width: 100%; }
+.btn-sm { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-secondary { background: #e2e8f0; color: var(--text); }
+.btn-secondary:hover { background: #cbd5e1; }
+.btn-outline { background: transparent; border: 1px solid currentColor; color: inherit; }
+.btn-danger { background: var(--accent-red); color: #fff; }
+.btn-danger:hover { background: #991b1b; }
+
+.action-group {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Tables & Lists */
+.table-responsive {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.pill {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.pill-High { background: #fee2e2; color: #b91c1c; }
+.pill-Medium { background: #fef3c7; color: #b45309; }
+.pill-Low { background: #dcfce7; color: #166534; }
+
+.status-Pending { color: var(--warning); font-weight: 600; }
+.status-Ongoing { color: var(--info); font-weight: 600; }
+.status-Completed { color: var(--success); font-weight: 600; }
+
+.clean-list {
+  list-style: none;
+  margin-top: 0.75rem;
+}
+
+.clean-list li {
+  padding: 0.65rem 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+/* Schedule Grid */
+.schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.schedule-item {
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  padding: 0.85rem;
+  background: #f8faf9;
+}
+
+.schedule-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+@media (max-width: 768px) {
+  .app-layout { flex-direction: column; }
+  .sidebar { width: 100%; border-right: none; border-bottom: 3px solid var(--accent-gold); }
+  .main-content { padding: 1rem; }
+}
