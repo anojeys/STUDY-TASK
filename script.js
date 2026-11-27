@@ -1,475 +1,613 @@
-:root {
-  --primary: #14532d;        /* GNC Deep Forest Green */
-  --primary-dark: #0f3d21;   /* Darker Green Hover */
-  --accent-gold: #ca8a04;    /* GNC Gold Accent */
-  --accent-red: #b91c1c;     /* GNC Crimson Accent */
-  --bg: #eef3ef;
-  --surface: rgba(255, 255, 255, 0.95);
-  --text: #14261c;
-  --muted: #4b6354;
-  --border: #d1ddd5;
-  --success: #15803d;
-  --warning: #d97706;
-  --danger: #dc2626;
-  --info: #0369a1;
+const STORAGE_KEY = "studyflow_gnc_v2";
+// Optional: set a non-empty string if you also want to require a secret code on registration
+const REQUIRED_REG_CODE = ""; // e.g., "GNC-2026-ACCEPT"
+
+const DEFAULT_SEED_DATA = {
+  users: [
+    {
+      name: "Juan Dela Cruz",
+      email: "student@gnc.edu.ph",
+      password: "123456",
+      role: "admin",
+      status: "approved"
+    }
+  ],
+  tasks: [
+    {
+      id: 1700000001,
+      title: "Finalize Capstone Chapter 1 & IPO Framework",
+      subject: "Capstone Project 1",
+      deadline: "2026-11-28",
+      priority: "High",
+      status: "Ongoing"
+    },
+    {
+      id: 1700000002,
+      title: "Database Normalization Quiz Review",
+      subject: "Information Management",
+      deadline: "2026-11-30",
+      priority: "Medium",
+      status: "Pending"
+    },
+    {
+      id: 1700000003,
+      title: "Submit System Prototype Wireframes",
+      subject: "Human-Computer Interaction",
+      deadline: "2026-11-20",
+      priority: "High",
+      status: "Completed"
+    }
+  ],
+  schedules: [
+    {
+      id: 2700000001,
+      day: "Monday",
+      time: "6:00 PM - 8:00 PM",
+      subject: "Capstone System Development"
+    },
+    {
+      id: 2700000002,
+      day: "Wednesday",
+      time: "4:00 PM - 6:00 PM",
+      subject: "Information Management"
+    },
+    {
+      id: 2700000003,
+      day: "Saturday",
+      time: "9:00 AM - 11:30 AM",
+      subject: "Research & Documentation"
+    }
+  ]
+};
+
+function cloneData(obj) {
+  if (typeof structuredClone === "function") {
+    return structuredClone(obj);
+  }
+  return JSON.parse(JSON.stringify(obj));
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+function normalizeUsers(users) {
+  if (!Array.isArray(users) || users.length === 0) {
+    return cloneData(DEFAULT_SEED_DATA.users);
+  }
+  return users.map((u) => ({
+    name: String(u.name || "Student").trim(),
+    email: String(u.email || "").trim().toLowerCase(),
+    password: String(u.password || ""),
+    role: u.role === "admin" ? "admin" : "student",
+    status: u.status === "approved" ? "approved" : "pending"
+  }));
 }
 
-body {
-  background-color: var(--bg);
-  color: var(--text);
-  line-height: 1.5;
+function loadSystemData() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      return {
+        users: normalizeUsers(parsed.users),
+        tasks: Array.isArray(parsed.tasks) ? parsed.tasks : cloneData(DEFAULT_SEED_DATA.tasks),
+        schedules: Array.isArray(parsed.schedules) ? parsed.schedules : cloneData(DEFAULT_SEED_DATA.schedules)
+      };
+    } catch {
+      return cloneData(DEFAULT_SEED_DATA);
+    }
+  }
+  return cloneData(DEFAULT_SEED_DATA);
 }
 
-.hidden {
-  display: none !important;
+let db = loadSystemData();
+let currentUser = null;
+
+function saveSystemData() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
 }
 
-/* Authentication with GNC Background Image */
-.auth-wrapper {
-  position: relative;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  background: url("images.jpg") center center / cover no-repeat fixed;
+function showFeedback(targetId, message, type = "info") {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.textContent = message;
+  el.className = `feedback-banner feedback-${type}`;
+  el.classList.remove("hidden");
 }
 
-.auth-overlay {
-  position: fixed;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(20, 83, 45, 0.78), rgba(15, 23, 42, 0.72));
-  z-index: 0;
+function clearFeedback(targetId) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.textContent = "";
+  el.classList.add("hidden");
 }
 
-.auth-card {
-  position: relative;
-  z-index: 1;
-  background: var(--surface);
-  backdrop-filter: blur(8px);
-  width: 100%;
-  max-width: 430px;
-  padding: 2rem;
-  border-radius: 14px;
-  border-top: 5px solid var(--primary);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28);
+function isAdmin() {
+  return Boolean(currentUser && currentUser.role === "admin" && currentUser.status === "approved");
 }
 
-.brand-header {
-  text-align: center;
-  margin-bottom: 1.5rem;
+function switchAuthTab(tab) {
+  clearFeedback("auth-feedback");
+  const isLogin = tab === "login";
+  document.getElementById("tab-login")?.classList.toggle("active", isLogin);
+  document.getElementById("tab-register")?.classList.toggle("active", !isLogin);
+  document.getElementById("login-form")?.classList.toggle("hidden", !isLogin);
+  document.getElementById("register-form")?.classList.toggle("hidden", isLogin);
 }
 
-.brand-logo {
-  width: 84px;
-  height: 84px;
-  object-fit: contain;
-  border-radius: 50%;
-  background: #ffffff;
-  padding: 4px;
-  border: 3px solid var(--accent-gold);
-  box-shadow: 0 4px 12px rgba(20, 83, 45, 0.22);
-  margin-bottom: 0.65rem;
+function switchView(viewName) {
+  clearFeedback("app-feedback");
+  document.querySelectorAll(".view-section").forEach((sec) => sec.classList.add("hidden"));
+  document.getElementById(`view-${viewName}`)?.classList.remove("hidden");
+
+  document.querySelectorAll(".nav-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.view === viewName);
+  });
+
+  const titles = {
+    dashboard: "Dashboard Overview",
+    tasks: "Task Management",
+    schedule: "Study Schedule"
+  };
+  const pageTitle = document.getElementById("page-title");
+  if (pageTitle && titles[viewName]) {
+    pageTitle.textContent = titles[viewName];
+  }
+
+  renderAll();
 }
 
-.brand-header h1 {
-  color: var(--primary);
-  font-size: 1.8rem;
+function logout() {
+  currentUser = null;
+  resetTaskForm();
+  clearFeedback("app-feedback");
+  clearFeedback("auth-feedback");
+  document.getElementById("app-section")?.classList.add("hidden");
+  document.getElementById("auth-section")?.classList.remove("hidden");
+  switchAuthTab("login");
 }
 
-.brand-header p {
-  font-size: 0.85rem;
-  color: var(--muted);
+function resetDemoData() {
+  localStorage.removeItem(STORAGE_KEY);
+  db = cloneData(DEFAULT_SEED_DATA);
+  resetTaskForm();
+  renderAll();
+  showFeedback("app-feedback", "Demo data has been restored to default seed values.", "success");
 }
 
-.auth-tabs {
-  display: flex;
-  border-bottom: 2px solid var(--border);
-  margin-bottom: 1.25rem;
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(db, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "studyflow-gnc-backup.json";
+  a.click();
+  URL.revokeObjectURL(url);
+  showFeedback("app-feedback", "Exported studyflow-gnc-backup.json.", "info");
 }
 
-.auth-tabs button {
-  flex: 1;
-  background: none;
-  border: none;
-  padding: 0.6rem;
-  font-weight: 600;
-  color: var(--muted);
-  cursor: pointer;
+// Handle Registration (Requires Admin Verification & Approval)
+document.getElementById("register-form")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const name = document.getElementById("reg-name").value.trim();
+  const email = document.getElementById("reg-email").value.trim().toLowerCase();
+  const password = document.getElementById("reg-password").value;
+  const code = document.getElementById("reg-invite-code")?.value.trim() || "";
+
+  if (!name || !email) {
+    showFeedback("auth-feedback", "Please provide both your full name and email address.", "error");
+    return;
+  }
+
+  if (password.length < 6) {
+    showFeedback("auth-feedback", "Password must be at least 6 characters long.", "error");
+    return;
+  }
+
+  if (REQUIRED_REG_CODE && code !== REQUIRED_REG_CODE) {
+    showFeedback("auth-feedback", "Invalid registration security code. Registration rejected.", "error");
+    return;
+  }
+
+  const exists = db.users.some((u) => u.email.toLowerCase() === email);
+  if (exists) {
+    showFeedback("auth-feedback", "An account with this email already exists or is pending admin approval.", "error");
+    return;
+  }
+
+  db.users.push({
+    name,
+    email,
+    password,
+    role: "student",
+    status: "pending"
+  });
+
+  saveSystemData();
+  e.target.reset();
+  renderPendingRegistrations();
+  switchAuthTab("login");
+  showFeedback(
+    "auth-feedback",
+    "Registration submitted! An administrator must verify and approve your account before you can sign in.",
+    "success"
+  );
+});
+
+// Handle Login (Blocks Unapproved Accounts)
+document.getElementById("login-form")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const email = document.getElementById("login-email").value.trim().toLowerCase();
+  const password = document.getElementById("login-password").value;
+
+  const user = db.users.find(
+    (u) => u.email.toLowerCase() === email && u.password === password
+  );
+
+  if (!user) {
+    showFeedback("auth-feedback", "Invalid email or password.", "error");
+    return;
+  }
+
+  if (user.status !== "approved") {
+    showFeedback("auth-feedback", "Your account is still pending administrator verification and approval.", "error");
+    return;
+  }
+
+  currentUser = user;
+  clearFeedback("auth-feedback");
+  clearFeedback("app-feedback");
+  document.getElementById("auth-section").classList.add("hidden");
+  document.getElementById("app-section").classList.remove("hidden");
+  document.getElementById("user-display-name").textContent = user.name;
+  document.getElementById("user-display-email").textContent = user.email;
+
+  const roleBadge = document.getElementById("role-badge");
+  if (roleBadge) {
+    roleBadge.textContent = user.role === "admin" ? "GNC Admin" : "GNC Student";
+  }
+
+  renderAll();
+});
+
+// Admin Verification: Accept a Pending Registration
+function acceptRegistration(email) {
+  if (!isAdmin()) {
+    showFeedback("app-feedback", "Only an authenticated administrator can approve accounts.", "error");
+    return;
+  }
+
+  const user = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  if (!user) return;
+
+  user.status = "approved";
+  saveSystemData();
+  renderPendingRegistrations();
+  showFeedback("app-feedback", `Verified and approved account for ${user.name} (${user.email}).`, "success");
 }
 
-.auth-tabs button.active {
-  color: var(--primary);
-  border-bottom: 2px solid var(--primary);
-  margin-bottom: -2px;
+// Admin Verification: Reject / Remove a Pending Registration
+function rejectRegistration(email) {
+  if (!isAdmin()) {
+    showFeedback("app-feedback", "Only an authenticated administrator can reject accounts.", "error");
+    return;
+  }
+
+  const index = db.users.findIndex((u) => u.email.toLowerCase() === email.toLowerCase());
+  if (index === -1) return;
+
+  const removed = db.users[index];
+  db.users.splice(index, 1);
+  saveSystemData();
+  renderPendingRegistrations();
+  showFeedback("app-feedback", `Rejected and removed registration for ${removed.email}.`, "info");
 }
 
-.demo-hint {
-  margin-top: 1rem;
-  font-size: 0.8rem;
-  color: var(--muted);
-  text-align: center;
+// Render Pending Registrations List
+function renderPendingRegistrations() {
+  const list = document.getElementById("pending-registrations-list");
+  const badge = document.getElementById("pending-count-badge");
+  if (!list || !badge) return;
+
+  const pendingUsers = db.users.filter((u) => u.status === "pending");
+  badge.textContent = `${pendingUsers.length} Pending`;
+
+  if (pendingUsers.length === 0) {
+    list.innerHTML = `<li><span>No pending registrations awaiting admin verification.</span></li>`;
+    return;
+  }
+
+  if (!isAdmin()) {
+    list.innerHTML = pendingUsers
+      .map(
+        (u) => `
+        <li>
+          <div>
+            <strong>${escapeHTML(u.name)}</strong><br />
+            <small>${escapeHTML(u.email)} • Awaiting Admin Approval</small>
+          </div>
+          <span class="pill pill-Medium">Admin Only</span>
+        </li>
+      `
+      )
+      .join("");
+    return;
+  }
+
+  list.innerHTML = pendingUsers
+    .map((u) => {
+      const safeEmailAttr = escapeHTML(encodeURIComponent(u.email));
+      return `
+        <li>
+          <div>
+            <strong>${escapeHTML(u.name)}</strong><br />
+            <small>${escapeHTML(u.email)} • Role: ${escapeHTML(u.role)}</small>
+          </div>
+          <div class="action-group">
+            <button type="button" class="btn btn-primary btn-sm" onclick="acceptRegistration(decodeURIComponent('${safeEmailAttr}'))">Verify &amp; Approve</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="rejectRegistration(decodeURIComponent('${safeEmailAttr}'))">Reject</button>
+          </div>
+        </li>
+      `;
+    })
+    .join("");
 }
 
-/* Main App Layout with Subtle GNC Background */
-.app-layout {
-  position: relative;
-  display: flex;
-  min-height: 100vh;
-  background: url("images.jpg") center center / cover no-repeat fixed;
+// Dashboard Statistics, Progress, Alerts & Lists
+function renderDashboard() {
+  const total = db.tasks.length;
+  const pending = db.tasks.filter((t) => t.status === "Pending").length;
+  const ongoing = db.tasks.filter((t) => t.status === "Ongoing").length;
+  const completed = db.tasks.filter((t) => t.status === "Completed").length;
+
+  document.getElementById("stat-total").textContent = total;
+  document.getElementById("stat-pending").textContent = pending;
+  document.getElementById("stat-ongoing").textContent = ongoing;
+  document.getElementById("stat-completed").textContent = completed;
+
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+  document.getElementById("progress-percent").textContent = `${percent}%`;
+  document.getElementById("progress-fill").style.width = `${percent}%`;
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const incompleteTasks = db.tasks.filter((t) => t.status !== "Completed");
+  const overdueOrToday = incompleteTasks.filter((t) => t.deadline && t.deadline <= todayStr);
+
+  const alertBanner = document.getElementById("deadline-alert");
+  if (alertBanner) {
+    if (overdueOrToday.length > 0) {
+      alertBanner.textContent = `⚠️ You have ${overdueOrToday.length} task(s) due today or overdue.`;
+      alertBanner.classList.remove("hidden");
+    } else {
+      alertBanner.classList.add("hidden");
+    }
+  }
+
+  const deadlinesList = document.getElementById("upcoming-deadlines-list");
+  if (deadlinesList) {
+    const sorted = [...incompleteTasks].sort((a, b) => (a.deadline || "").localeCompare(b.deadline || ""));
+    if (sorted.length === 0) {
+      deadlinesList.innerHTML = `<li><span>No upcoming incomplete deadlines.</span></li>`;
+    } else {
+      deadlinesList.innerHTML = sorted
+        .slice(0, 5)
+        .map(
+          (t) => `
+          <li>
+            <div>
+              <strong>${escapeHTML(t.title)}</strong><br />
+              <small>${escapeHTML(t.subject)}</small>
+            </div>
+            <span class="pill pill-${escapeHTML(t.priority)}">${escapeHTML(t.deadline || "No date")}</span>
+          </li>
+        `
+        )
+        .join("");
+    }
+  }
+
+  const schedList = document.getElementById("dashboard-schedule-list");
+  if (schedList) {
+    if (db.schedules.length === 0) {
+      schedList.innerHTML = `<li><span>No study routines scheduled yet.</span></li>`;
+    } else {
+      schedList.innerHTML = db.schedules
+        .map(
+          (s) => `
+          <li>
+            <div>
+              <strong>${escapeHTML(s.subject)}</strong><br />
+              <small>${escapeHTML(s.day)}</small>
+            </div>
+            <span>${escapeHTML(s.time)}</span>
+          </li>
+        `
+        )
+        .join("");
+    }
+  }
 }
 
-.app-layout::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background: rgba(238, 243, 239, 0.9);
-  pointer-events: none;
-  z-index: 0;
+// Task Form Handling
+document.getElementById("task-form")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const idVal = document.getElementById("task-id").value;
+  const title = document.getElementById("task-title").value.trim();
+  const subject = document.getElementById("task-subject").value.trim();
+  const deadline = document.getElementById("task-deadline").value;
+  const priority = document.getElementById("task-priority").value;
+  const status = document.getElementById("task-status").value;
+
+  if (!title || !subject || !deadline) return;
+
+  if (idVal) {
+    const task = db.tasks.find((t) => String(t.id) === String(idVal));
+    if (task) {
+      task.title = title;
+      task.subject = subject;
+      task.deadline = deadline;
+      task.priority = priority;
+      task.status = status;
+    }
+    showFeedback("app-feedback", "Task updated.", "success");
+  } else {
+    db.tasks.push({
+      id: Date.now(),
+      title,
+      subject,
+      deadline,
+      priority,
+      status
+    });
+    showFeedback("app-feedback", "New task added.", "success");
+  }
+
+  saveSystemData();
+  resetTaskForm();
+  renderAll();
+});
+
+function editTask(id) {
+  const task = db.tasks.find((t) => String(t.id) === String(id));
+  if (!task) return;
+
+  switchView("tasks");
+  document.getElementById("task-id").value = task.id;
+  document.getElementById("task-title").value = task.title;
+  document.getElementById("task-subject").value = task.subject;
+  document.getElementById("task-deadline").value = task.deadline;
+  document.getElementById("task-priority").value = task.priority;
+  document.getElementById("task-status").value = task.status;
+  document.getElementById("task-form-title").textContent = "Edit Academic Task";
+  document.getElementById("task-submit-btn").textContent = "Update Task";
+  document.getElementById("task-cancel-btn").classList.remove("hidden");
 }
 
-.sidebar {
-  position: relative;
-  z-index: 1;
-  width: 260px;
-  background: linear-gradient(180deg, #14532d 0%, #0d2818 100%);
-  color: #f8fafc;
-  display: flex;
-  flex-direction: column;
-  padding: 1.5rem 1rem;
-  border-right: 3px solid var(--accent-gold);
+function deleteTask(id) {
+  db.tasks = db.tasks.filter((t) => String(t.id) !== String(id));
+  saveSystemData();
+  renderAll();
+  showFeedback("app-feedback", "Task deleted.", "info");
 }
 
-.sidebar-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 2rem;
-  padding: 0 0.35rem;
+function resetTaskForm() {
+  document.getElementById("task-form")?.reset();
+  document.getElementById("task-id").value = "";
+  document.getElementById("task-form-title").textContent = "Add New Academic Task";
+  document.getElementById("task-submit-btn").textContent = "Save Task";
+  document.getElementById("task-cancel-btn")?.classList.add("hidden");
 }
 
-.sidebar-logo {
-  width: 48px;
-  height: 48px;
-  object-fit: contain;
-  border-radius: 50%;
-  background: #ffffff;
-  padding: 2px;
-  border: 2px solid var(--accent-gold);
-  flex-shrink: 0;
+function renderTasks() {
+  const tbody = document.getElementById("task-table-body");
+  if (!tbody) return;
+
+  const statusFilter = document.getElementById("filter-status")?.value || "All";
+  const priorityFilter = document.getElementById("filter-priority")?.value || "All";
+
+  const filtered = db.tasks.filter((t) => {
+    const statusOk = statusFilter === "All" || t.status === statusFilter;
+    const priorityOk = priorityFilter === "All" || t.priority === priorityFilter;
+    return statusOk && priorityOk;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5">No tasks match the selected filters.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered
+    .map(
+      (t) => `
+      <tr>
+        <td>
+          <strong>${escapeHTML(t.title)}</strong><br />
+          <small>${escapeHTML(t.subject)}</small>
+        </td>
+        <td>${escapeHTML(t.deadline)}</td>
+        <td><span class="pill pill-${escapeHTML(t.priority)}">${escapeHTML(t.priority)}</span></td>
+        <td><span class="status-${escapeHTML(t.status)}">${escapeHTML(t.status)}</span></td>
+        <td>
+          <div class="action-group">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="editTask('${escapeHTML(t.id)}')">Edit</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="deleteTask('${escapeHTML(t.id)}')">Delete</button>
+          </div>
+        </td>
+      </tr>
+    `
+    )
+    .join("");
 }
 
-.badge {
-  display: inline-block;
-  font-size: 0.72rem;
-  background: var(--accent-gold);
-  color: #14261c;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 999px;
-  margin-top: 4px;
+// Schedule Form Handling
+document.getElementById("schedule-form")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const day = document.getElementById("sched-day").value;
+  const time = document.getElementById("sched-time").value.trim();
+  const subject = document.getElementById("sched-subject").value.trim();
+
+  if (!day || !time || !subject) return;
+
+  db.schedules.push({
+    id: Date.now(),
+    day,
+    time,
+    subject
+  });
+
+  saveSystemData();
+  e.target.reset();
+  renderAll();
+  showFeedback("app-feedback", "Study session added to timetable.", "success");
+});
+
+function deleteSchedule(id) {
+  db.schedules = db.schedules.filter((s) => String(s.id) !== String(id));
+  saveSystemData();
+  renderAll();
+  showFeedback("app-feedback", "Study session removed.", "info");
 }
 
-.sidebar-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  flex: 1;
+function renderSchedules() {
+  const grid = document.getElementById("schedule-grid");
+  if (!grid) return;
+
+  if (db.schedules.length === 0) {
+    grid.innerHTML = `<p>No study sessions planned yet.</p>`;
+    return;
+  }
+
+  grid.innerHTML = db.schedules
+    .map(
+      (s) => `
+      <div class="schedule-item">
+        <div class="schedule-item-header">
+          <strong>${escapeHTML(s.day)}</strong>
+          <button type="button" class="btn btn-danger btn-sm" onclick="deleteSchedule('${escapeHTML(s.id)}')">✕</button>
+        </div>
+        <div>${escapeHTML(s.subject)}</div>
+        <small>${escapeHTML(s.time)}</small>
+      </div>
+    `
+    )
+    .join("");
 }
 
-.nav-btn {
-  background: transparent;
-  border: none;
-  color: #dcfce7;
-  text-align: left;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: 0.2s;
+function renderAll() {
+  renderPendingRegistrations();
+  renderDashboard();
+  renderTasks();
+  renderSchedules();
 }
 
-.nav-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
+function escapeHTML(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
-.nav-btn.active {
-  background: var(--accent-gold);
-  color: #14261c;
-  font-weight: 700;
-}
-
-.sidebar-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-  padding-top: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.user-info strong {
-  display: block;
-  font-size: 0.9rem;
-}
-
-.user-info small {
-  color: #bbf7d0;
-  font-size: 0.78rem;
-}
-
-.main-content {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  padding: 1.5rem 2rem;
-  overflow-y: auto;
-}
-
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.topbar h1 {
-  font-size: 1.5rem;
-  color: var(--primary);
-}
-
-/* Cards & Grids */
-.card {
-  background: var(--surface);
-  border-radius: 10px;
-  padding: 1.25rem;
-  box-shadow: 0 2px 6px rgba(20, 83, 45, 0.08);
-  border: 1px solid var(--border);
-  margin-bottom: 1.25rem;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
-
-.stat-card {
-  background: var(--surface);
-  padding: 1.2rem;
-  border-radius: 10px;
-  border-left: 4px solid var(--primary);
-  box-shadow: 0 2px 6px rgba(20, 83, 45, 0.08);
-}
-
-.stat-card.warning { border-left-color: var(--warning); }
-.stat-card.info { border-left-color: var(--info); }
-.stat-card.success { border-left-color: var(--success); }
-
-.stat-card span {
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.stat-card h2 {
-  font-size: 1.8rem;
-  margin-top: 0.25rem;
-}
-
-.two-col-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.25rem;
-}
-
-/* Alert & Progress */
-.alert-banner {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: var(--accent-red);
-  padding: 0.9rem 1rem;
-  border-radius: 8px;
-  margin-bottom: 1.25rem;
-  font-weight: 500;
-}
-
-.progress-track {
-  width: 100%;
-  height: 12px;
-  background: var(--border);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, var(--primary), var(--accent-gold));
-  transition: width 0.3s ease;
-}
-
-/* Forms & Buttons */
-.form-group {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 0.9rem;
-}
-
-.form-group label {
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin-bottom: 0.3rem;
-}
-
-input, select {
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 0.92rem;
-  background: #ffffff;
-}
-
-input:focus, select:focus {
-  outline: 2px solid rgba(20, 83, 45, 0.25);
-  border-color: var(--primary);
-}
-
-.grid-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 0.85rem;
-  align-items: end;
-}
-
-.form-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.9rem;
-}
-
-.filters {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.btn {
-  padding: 0.6rem 1rem;
-  border: none;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: 0.15s;
-}
-
-.btn-block { width: 100%; }
-.btn-sm { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
-.btn-primary { background: var(--primary); color: #fff; }
-.btn-primary:hover { background: var(--primary-dark); }
-.btn-secondary { background: #e2e8f0; color: var(--text); }
-.btn-secondary:hover { background: #cbd5e1; }
-.btn-outline { background: transparent; border: 1px solid currentColor; color: inherit; }
-.btn-danger { background: var(--accent-red); color: #fff; }
-.btn-danger:hover { background: #991b1b; }
-
-.action-group {
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-/* Tables & Lists */
-.table-responsive {
-  overflow-x: auto;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-th, td {
-  text-align: left;
-  padding: 0.75rem;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.9rem;
-}
-
-.pill {
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.pill-High { background: #fee2e2; color: #b91c1c; }
-.pill-Medium { background: #fef3c7; color: #b45309; }
-.pill-Low { background: #dcfce7; color: #166534; }
-
-.status-Pending { color: var(--warning); font-weight: 600; }
-.status-Ongoing { color: var(--info); font-weight: 600; }
-.status-Completed { color: var(--success); font-weight: 600; }
-
-.clean-list {
-  list-style: none;
-  margin-top: 0.75rem;
-}
-
-.clean-list li {
-  padding: 0.65rem 0;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-  font-size: 0.9rem;
-}
-
-/* Schedule Grid */
-.schedule-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.schedule-item {
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--primary);
-  border-radius: 8px;
-  padding: 0.85rem;
-  background: #f8faf9;
-}
-
-.schedule-item-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.35rem;
-}
-
-@media (max-width: 768px) {
-  .app-layout { flex-direction: column; }
-  .sidebar { width: 100%; border-right: none; border-bottom: 3px solid var(--accent-gold); }
-  .main-content { padding: 1rem; }
-}
+renderAll();
