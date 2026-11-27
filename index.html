@@ -1,273 +1,613 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StudyFlow — Guagua National Colleges</title>
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
+const STORAGE_KEY = "studyflow_gnc_v2";
+// Optional: set a non-empty string if you also want to require a secret code on registration
+const REQUIRED_REG_CODE = ""; // e.g., "GNC-2026-ACCEPT"
 
-  <!-- AUTHENTICATION SCREEN -->
-  <section id="auth-section" class="auth-wrapper">
-    <div class="auth-overlay"></div>
-    <div class="auth-card">
-      <div class="brand-header">
-        <img src="Media.jpg" alt="Guagua National Colleges Logo" class="brand-logo" />
-        <h1>StudyFlow</h1>
-        <p>Guagua National Colleges • Student Study &amp; Task Management System</p>
+const DEFAULT_SEED_DATA = {
+  users: [
+    {
+      name: "Juan Dela Cruz",
+      email: "student@gnc.edu.ph",
+      password: "123456",
+      role: "admin",
+      status: "approved"
+    }
+  ],
+  tasks: [
+    {
+      id: 1700000001,
+      title: "Finalize Capstone Chapter 1 & IPO Framework",
+      subject: "Capstone Project 1",
+      deadline: "2026-11-28",
+      priority: "High",
+      status: "Ongoing"
+    },
+    {
+      id: 1700000002,
+      title: "Database Normalization Quiz Review",
+      subject: "Information Management",
+      deadline: "2026-11-30",
+      priority: "Medium",
+      status: "Pending"
+    },
+    {
+      id: 1700000003,
+      title: "Submit System Prototype Wireframes",
+      subject: "Human-Computer Interaction",
+      deadline: "2026-11-20",
+      priority: "High",
+      status: "Completed"
+    }
+  ],
+  schedules: [
+    {
+      id: 2700000001,
+      day: "Monday",
+      time: "6:00 PM - 8:00 PM",
+      subject: "Capstone System Development"
+    },
+    {
+      id: 2700000002,
+      day: "Wednesday",
+      time: "4:00 PM - 6:00 PM",
+      subject: "Information Management"
+    },
+    {
+      id: 2700000003,
+      day: "Saturday",
+      time: "9:00 AM - 11:30 AM",
+      subject: "Research & Documentation"
+    }
+  ]
+};
+
+function cloneData(obj) {
+  if (typeof structuredClone === "function") {
+    return structuredClone(obj);
+  }
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function normalizeUsers(users) {
+  if (!Array.isArray(users) || users.length === 0) {
+    return cloneData(DEFAULT_SEED_DATA.users);
+  }
+  return users.map((u) => ({
+    name: String(u.name || "Student").trim(),
+    email: String(u.email || "").trim().toLowerCase(),
+    password: String(u.password || ""),
+    role: u.role === "admin" ? "admin" : "student",
+    status: u.status === "approved" ? "approved" : "pending"
+  }));
+}
+
+function loadSystemData() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      return {
+        users: normalizeUsers(parsed.users),
+        tasks: Array.isArray(parsed.tasks) ? parsed.tasks : cloneData(DEFAULT_SEED_DATA.tasks),
+        schedules: Array.isArray(parsed.schedules) ? parsed.schedules : cloneData(DEFAULT_SEED_DATA.schedules)
+      };
+    } catch {
+      return cloneData(DEFAULT_SEED_DATA);
+    }
+  }
+  return cloneData(DEFAULT_SEED_DATA);
+}
+
+let db = loadSystemData();
+let currentUser = null;
+
+function saveSystemData() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+}
+
+function showFeedback(targetId, message, type = "info") {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.textContent = message;
+  el.className = `feedback-banner feedback-${type}`;
+  el.classList.remove("hidden");
+}
+
+function clearFeedback(targetId) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.textContent = "";
+  el.classList.add("hidden");
+}
+
+function isAdmin() {
+  return Boolean(currentUser && currentUser.role === "admin" && currentUser.status === "approved");
+}
+
+function switchAuthTab(tab) {
+  clearFeedback("auth-feedback");
+  const isLogin = tab === "login";
+  document.getElementById("tab-login")?.classList.toggle("active", isLogin);
+  document.getElementById("tab-register")?.classList.toggle("active", !isLogin);
+  document.getElementById("login-form")?.classList.toggle("hidden", !isLogin);
+  document.getElementById("register-form")?.classList.toggle("hidden", isLogin);
+}
+
+function switchView(viewName) {
+  clearFeedback("app-feedback");
+  document.querySelectorAll(".view-section").forEach((sec) => sec.classList.add("hidden"));
+  document.getElementById(`view-${viewName}`)?.classList.remove("hidden");
+
+  document.querySelectorAll(".nav-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.view === viewName);
+  });
+
+  const titles = {
+    dashboard: "Dashboard Overview",
+    tasks: "Task Management",
+    schedule: "Study Schedule"
+  };
+  const pageTitle = document.getElementById("page-title");
+  if (pageTitle && titles[viewName]) {
+    pageTitle.textContent = titles[viewName];
+  }
+
+  renderAll();
+}
+
+function logout() {
+  currentUser = null;
+  resetTaskForm();
+  clearFeedback("app-feedback");
+  clearFeedback("auth-feedback");
+  document.getElementById("app-section")?.classList.add("hidden");
+  document.getElementById("auth-section")?.classList.remove("hidden");
+  switchAuthTab("login");
+}
+
+function resetDemoData() {
+  localStorage.removeItem(STORAGE_KEY);
+  db = cloneData(DEFAULT_SEED_DATA);
+  resetTaskForm();
+  renderAll();
+  showFeedback("app-feedback", "Demo data has been restored to default seed values.", "success");
+}
+
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(db, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "studyflow-gnc-backup.json";
+  a.click();
+  URL.revokeObjectURL(url);
+  showFeedback("app-feedback", "Exported studyflow-gnc-backup.json.", "info");
+}
+
+// Handle Registration (Requires Admin Verification & Approval)
+document.getElementById("register-form")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const name = document.getElementById("reg-name").value.trim();
+  const email = document.getElementById("reg-email").value.trim().toLowerCase();
+  const password = document.getElementById("reg-password").value;
+  const code = document.getElementById("reg-invite-code")?.value.trim() || "";
+
+  if (!name || !email) {
+    showFeedback("auth-feedback", "Please provide both your full name and email address.", "error");
+    return;
+  }
+
+  if (password.length < 6) {
+    showFeedback("auth-feedback", "Password must be at least 6 characters long.", "error");
+    return;
+  }
+
+  if (REQUIRED_REG_CODE && code !== REQUIRED_REG_CODE) {
+    showFeedback("auth-feedback", "Invalid registration security code. Registration rejected.", "error");
+    return;
+  }
+
+  const exists = db.users.some((u) => u.email.toLowerCase() === email);
+  if (exists) {
+    showFeedback("auth-feedback", "An account with this email already exists or is pending admin approval.", "error");
+    return;
+  }
+
+  db.users.push({
+    name,
+    email,
+    password,
+    role: "student",
+    status: "pending"
+  });
+
+  saveSystemData();
+  e.target.reset();
+  renderPendingRegistrations();
+  switchAuthTab("login");
+  showFeedback(
+    "auth-feedback",
+    "Registration submitted! An administrator must verify and approve your account before you can sign in.",
+    "success"
+  );
+});
+
+// Handle Login (Blocks Unapproved Accounts)
+document.getElementById("login-form")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const email = document.getElementById("login-email").value.trim().toLowerCase();
+  const password = document.getElementById("login-password").value;
+
+  const user = db.users.find(
+    (u) => u.email.toLowerCase() === email && u.password === password
+  );
+
+  if (!user) {
+    showFeedback("auth-feedback", "Invalid email or password.", "error");
+    return;
+  }
+
+  if (user.status !== "approved") {
+    showFeedback("auth-feedback", "Your account is still pending administrator verification and approval.", "error");
+    return;
+  }
+
+  currentUser = user;
+  clearFeedback("auth-feedback");
+  clearFeedback("app-feedback");
+  document.getElementById("auth-section").classList.add("hidden");
+  document.getElementById("app-section").classList.remove("hidden");
+  document.getElementById("user-display-name").textContent = user.name;
+  document.getElementById("user-display-email").textContent = user.email;
+
+  const roleBadge = document.getElementById("role-badge");
+  if (roleBadge) {
+    roleBadge.textContent = user.role === "admin" ? "GNC Admin" : "GNC Student";
+  }
+
+  renderAll();
+});
+
+// Admin Verification: Accept a Pending Registration
+function acceptRegistration(email) {
+  if (!isAdmin()) {
+    showFeedback("app-feedback", "Only an authenticated administrator can approve accounts.", "error");
+    return;
+  }
+
+  const user = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  if (!user) return;
+
+  user.status = "approved";
+  saveSystemData();
+  renderPendingRegistrations();
+  showFeedback("app-feedback", `Verified and approved account for ${user.name} (${user.email}).`, "success");
+}
+
+// Admin Verification: Reject / Remove a Pending Registration
+function rejectRegistration(email) {
+  if (!isAdmin()) {
+    showFeedback("app-feedback", "Only an authenticated administrator can reject accounts.", "error");
+    return;
+  }
+
+  const index = db.users.findIndex((u) => u.email.toLowerCase() === email.toLowerCase());
+  if (index === -1) return;
+
+  const removed = db.users[index];
+  db.users.splice(index, 1);
+  saveSystemData();
+  renderPendingRegistrations();
+  showFeedback("app-feedback", `Rejected and removed registration for ${removed.email}.`, "info");
+}
+
+// Render Pending Registrations List
+function renderPendingRegistrations() {
+  const list = document.getElementById("pending-registrations-list");
+  const badge = document.getElementById("pending-count-badge");
+  if (!list || !badge) return;
+
+  const pendingUsers = db.users.filter((u) => u.status === "pending");
+  badge.textContent = `${pendingUsers.length} Pending`;
+
+  if (pendingUsers.length === 0) {
+    list.innerHTML = `<li><span>No pending registrations awaiting admin verification.</span></li>`;
+    return;
+  }
+
+  if (!isAdmin()) {
+    list.innerHTML = pendingUsers
+      .map(
+        (u) => `
+        <li>
+          <div>
+            <strong>${escapeHTML(u.name)}</strong><br />
+            <small>${escapeHTML(u.email)} • Awaiting Admin Approval</small>
+          </div>
+          <span class="pill pill-Medium">Admin Only</span>
+        </li>
+      `
+      )
+      .join("");
+    return;
+  }
+
+  list.innerHTML = pendingUsers
+    .map((u) => {
+      const safeEmailAttr = escapeHTML(encodeURIComponent(u.email));
+      return `
+        <li>
+          <div>
+            <strong>${escapeHTML(u.name)}</strong><br />
+            <small>${escapeHTML(u.email)} • Role: ${escapeHTML(u.role)}</small>
+          </div>
+          <div class="action-group">
+            <button type="button" class="btn btn-primary btn-sm" onclick="acceptRegistration(decodeURIComponent('${safeEmailAttr}'))">Verify &amp; Approve</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="rejectRegistration(decodeURIComponent('${safeEmailAttr}'))">Reject</button>
+          </div>
+        </li>
+      `;
+    })
+    .join("");
+}
+
+// Dashboard Statistics, Progress, Alerts & Lists
+function renderDashboard() {
+  const total = db.tasks.length;
+  const pending = db.tasks.filter((t) => t.status === "Pending").length;
+  const ongoing = db.tasks.filter((t) => t.status === "Ongoing").length;
+  const completed = db.tasks.filter((t) => t.status === "Completed").length;
+
+  document.getElementById("stat-total").textContent = total;
+  document.getElementById("stat-pending").textContent = pending;
+  document.getElementById("stat-ongoing").textContent = ongoing;
+  document.getElementById("stat-completed").textContent = completed;
+
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+  document.getElementById("progress-percent").textContent = `${percent}%`;
+  document.getElementById("progress-fill").style.width = `${percent}%`;
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const incompleteTasks = db.tasks.filter((t) => t.status !== "Completed");
+  const overdueOrToday = incompleteTasks.filter((t) => t.deadline && t.deadline <= todayStr);
+
+  const alertBanner = document.getElementById("deadline-alert");
+  if (alertBanner) {
+    if (overdueOrToday.length > 0) {
+      alertBanner.textContent = `⚠️ You have ${overdueOrToday.length} task(s) due today or overdue.`;
+      alertBanner.classList.remove("hidden");
+    } else {
+      alertBanner.classList.add("hidden");
+    }
+  }
+
+  const deadlinesList = document.getElementById("upcoming-deadlines-list");
+  if (deadlinesList) {
+    const sorted = [...incompleteTasks].sort((a, b) => (a.deadline || "").localeCompare(b.deadline || ""));
+    if (sorted.length === 0) {
+      deadlinesList.innerHTML = `<li><span>No upcoming incomplete deadlines.</span></li>`;
+    } else {
+      deadlinesList.innerHTML = sorted
+        .slice(0, 5)
+        .map(
+          (t) => `
+          <li>
+            <div>
+              <strong>${escapeHTML(t.title)}</strong><br />
+              <small>${escapeHTML(t.subject)}</small>
+            </div>
+            <span class="pill pill-${escapeHTML(t.priority)}">${escapeHTML(t.deadline || "No date")}</span>
+          </li>
+        `
+        )
+        .join("");
+    }
+  }
+
+  const schedList = document.getElementById("dashboard-schedule-list");
+  if (schedList) {
+    if (db.schedules.length === 0) {
+      schedList.innerHTML = `<li><span>No study routines scheduled yet.</span></li>`;
+    } else {
+      schedList.innerHTML = db.schedules
+        .map(
+          (s) => `
+          <li>
+            <div>
+              <strong>${escapeHTML(s.subject)}</strong><br />
+              <small>${escapeHTML(s.day)}</small>
+            </div>
+            <span>${escapeHTML(s.time)}</span>
+          </li>
+        `
+        )
+        .join("");
+    }
+  }
+}
+
+// Task Form Handling
+document.getElementById("task-form")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const idVal = document.getElementById("task-id").value;
+  const title = document.getElementById("task-title").value.trim();
+  const subject = document.getElementById("task-subject").value.trim();
+  const deadline = document.getElementById("task-deadline").value;
+  const priority = document.getElementById("task-priority").value;
+  const status = document.getElementById("task-status").value;
+
+  if (!title || !subject || !deadline) return;
+
+  if (idVal) {
+    const task = db.tasks.find((t) => String(t.id) === String(idVal));
+    if (task) {
+      task.title = title;
+      task.subject = subject;
+      task.deadline = deadline;
+      task.priority = priority;
+      task.status = status;
+    }
+    showFeedback("app-feedback", "Task updated.", "success");
+  } else {
+    db.tasks.push({
+      id: Date.now(),
+      title,
+      subject,
+      deadline,
+      priority,
+      status
+    });
+    showFeedback("app-feedback", "New task added.", "success");
+  }
+
+  saveSystemData();
+  resetTaskForm();
+  renderAll();
+});
+
+function editTask(id) {
+  const task = db.tasks.find((t) => String(t.id) === String(id));
+  if (!task) return;
+
+  switchView("tasks");
+  document.getElementById("task-id").value = task.id;
+  document.getElementById("task-title").value = task.title;
+  document.getElementById("task-subject").value = task.subject;
+  document.getElementById("task-deadline").value = task.deadline;
+  document.getElementById("task-priority").value = task.priority;
+  document.getElementById("task-status").value = task.status;
+  document.getElementById("task-form-title").textContent = "Edit Academic Task";
+  document.getElementById("task-submit-btn").textContent = "Update Task";
+  document.getElementById("task-cancel-btn").classList.remove("hidden");
+}
+
+function deleteTask(id) {
+  db.tasks = db.tasks.filter((t) => String(t.id) !== String(id));
+  saveSystemData();
+  renderAll();
+  showFeedback("app-feedback", "Task deleted.", "info");
+}
+
+function resetTaskForm() {
+  document.getElementById("task-form")?.reset();
+  document.getElementById("task-id").value = "";
+  document.getElementById("task-form-title").textContent = "Add New Academic Task";
+  document.getElementById("task-submit-btn").textContent = "Save Task";
+  document.getElementById("task-cancel-btn")?.classList.add("hidden");
+}
+
+function renderTasks() {
+  const tbody = document.getElementById("task-table-body");
+  if (!tbody) return;
+
+  const statusFilter = document.getElementById("filter-status")?.value || "All";
+  const priorityFilter = document.getElementById("filter-priority")?.value || "All";
+
+  const filtered = db.tasks.filter((t) => {
+    const statusOk = statusFilter === "All" || t.status === statusFilter;
+    const priorityOk = priorityFilter === "All" || t.priority === priorityFilter;
+    return statusOk && priorityOk;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5">No tasks match the selected filters.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered
+    .map(
+      (t) => `
+      <tr>
+        <td>
+          <strong>${escapeHTML(t.title)}</strong><br />
+          <small>${escapeHTML(t.subject)}</small>
+        </td>
+        <td>${escapeHTML(t.deadline)}</td>
+        <td><span class="pill pill-${escapeHTML(t.priority)}">${escapeHTML(t.priority)}</span></td>
+        <td><span class="status-${escapeHTML(t.status)}">${escapeHTML(t.status)}</span></td>
+        <td>
+          <div class="action-group">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="editTask('${escapeHTML(t.id)}')">Edit</button>
+            <button type="button" class="btn btn-danger btn-sm" onclick="deleteTask('${escapeHTML(t.id)}')">Delete</button>
+          </div>
+        </td>
+      </tr>
+    `
+    )
+    .join("");
+}
+
+// Schedule Form Handling
+document.getElementById("schedule-form")?.addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const day = document.getElementById("sched-day").value;
+  const time = document.getElementById("sched-time").value.trim();
+  const subject = document.getElementById("sched-subject").value.trim();
+
+  if (!day || !time || !subject) return;
+
+  db.schedules.push({
+    id: Date.now(),
+    day,
+    time,
+    subject
+  });
+
+  saveSystemData();
+  e.target.reset();
+  renderAll();
+  showFeedback("app-feedback", "Study session added to timetable.", "success");
+});
+
+function deleteSchedule(id) {
+  db.schedules = db.schedules.filter((s) => String(s.id) !== String(id));
+  saveSystemData();
+  renderAll();
+  showFeedback("app-feedback", "Study session removed.", "info");
+}
+
+function renderSchedules() {
+  const grid = document.getElementById("schedule-grid");
+  if (!grid) return;
+
+  if (db.schedules.length === 0) {
+    grid.innerHTML = `<p>No study sessions planned yet.</p>`;
+    return;
+  }
+
+  grid.innerHTML = db.schedules
+    .map(
+      (s) => `
+      <div class="schedule-item">
+        <div class="schedule-item-header">
+          <strong>${escapeHTML(s.day)}</strong>
+          <button type="button" class="btn btn-danger btn-sm" onclick="deleteSchedule('${escapeHTML(s.id)}')">✕</button>
+        </div>
+        <div>${escapeHTML(s.subject)}</div>
+        <small>${escapeHTML(s.time)}</small>
       </div>
+    `
+    )
+    .join("");
+}
 
-      <div class="auth-tabs">
-        <button type="button" id="tab-login" class="active" onclick="switchAuthTab('login')">Login</button>
-        <button type="button" id="tab-register" onclick="switchAuthTab('register')">Register</button>
-      </div>
+function renderAll() {
+  renderPendingRegistrations();
+  renderDashboard();
+  renderTasks();
+  renderSchedules();
+}
 
-      <!-- Login Form -->
-      <form id="login-form" class="auth-form">
-        <div class="form-group">
-          <label for="login-email">Student / Admin Email</label>
-          <input type="email" id="login-email" placeholder="student@gnc.edu.ph" required />
-        </div>
-        <div class="form-group">
-          <label for="login-password">Password</label>
-          <input type="password" id="login-password" placeholder="Enter password" required />
-        </div>
-        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
-        <p class="demo-hint">Admin demo account: <strong>student@gnc.edu.ph</strong> / <strong>123456</strong></p>
-      </form>
+function escapeHTML(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
-      <!-- Register Form -->
-      <form id="register-form" class="auth-form hidden">
-        <div class="form-group">
-          <label for="reg-name">Full Name</label>
-          <input type="text" id="reg-name" placeholder="Juan Dela Cruz" required />
-        </div>
-        <div class="form-group">
-          <label for="reg-email">Student Email</label>
-          <input type="email" id="reg-email" placeholder="student@gnc.edu.ph" required />
-        </div>
-        <div class="form-group">
-          <label for="reg-password">Password</label>
-          <input type="password" id="reg-password" placeholder="Min. 6 characters" minlength="6" required />
-        </div>
-        <div class="form-group">
-          <label for="reg-invite-code">Registration Security Code (if required)</label>
-          <input type="text" id="reg-invite-code" placeholder="Optional or Admin Code" />
-        </div>
-        <p class="demo-hint">New accounts require administrator verification and approval before logging in.</p>
-        <button type="submit" class="btn btn-primary btn-block">Request Account</button>
-      </form>
-    </div>
-  </section>
-
-  <!-- MAIN APPLICATION DASHBOARD -->
-  <div id="app-section" class="app-layout hidden">
-    <!-- Sidebar Navigation -->
-    <aside class="sidebar">
-      <div class="sidebar-brand">
-        <img src="Media.jpg" alt="GNC Logo" class="sidebar-logo" />
-        <div>
-          <h2>StudyFlow</h2>
-          <span id="role-badge" class="badge">GNC Portal</span>
-        </div>
-      </div>
-      <nav class="sidebar-nav">
-        <button type="button" class="nav-btn active" data-view="dashboard" onclick="switchView('dashboard')">📊 Dashboard</button>
-        <button type="button" class="nav-btn" data-view="tasks" onclick="switchView('tasks')">📝 Task Management</button>
-        <button type="button" class="nav-btn" data-view="schedule" onclick="switchView('schedule')">📅 Study Schedule</button>
-      </nav>
-      <div class="sidebar-footer">
-        <div class="user-info">
-          <strong id="user-display-name">Student Name</strong>
-          <small id="user-display-email">student@gnc.edu.ph</small>
-        </div>
-        <button type="button" class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
-      </div>
-    </aside>
-
-    <!-- Main Content Area -->
-    <main class="main-content">
-      <!-- Top Bar -->
-      <header class="topbar">
-        <h1 id="page-title">Dashboard Overview</h1>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="exportJSON()">⬇ Export Data (JSON)</button>
-      </header>
-
-      <!-- VIEW 1: CENTRALIZED DASHBOARD -->
-      <section id="view-dashboard" class="view-section">
-        <!-- Deadline Alert Banner -->
-        <div id="deadline-alert" class="alert-banner hidden"></div>
-
-        <!-- Pending Account Registrations (Admin Verification) -->
-        <div class="card" id="pending-approvals-card">
-          <div class="card-header">
-            <h3>🛡️ Admin Account Verification</h3>
-            <span id="pending-count-badge" class="badge">0 Pending</span>
-          </div>
-          <ul id="pending-registrations-list" class="clean-list"></ul>
-        </div>
-
-        <!-- Progress Statistics -->
-        <div class="stats-grid">
-          <div class="stat-card">
-            <span>Total Tasks</span>
-            <h2 id="stat-total">0</h2>
-          </div>
-          <div class="stat-card warning">
-            <span>Pending</span>
-            <h2 id="stat-pending">0</h2>
-          </div>
-          <div class="stat-card info">
-            <span>Ongoing</span>
-            <h2 id="stat-ongoing">0</h2>
-          </div>
-          <div class="stat-card success">
-            <span>Completed</span>
-            <h2 id="stat-completed">0</h2>
-          </div>
-        </div>
-
-        <!-- Overall Progress Bar -->
-        <div class="card">
-          <div class="card-header">
-            <h3>Academic Task Completion Progress</h3>
-            <span id="progress-percent">0%</span>
-          </div>
-          <div class="progress-track">
-            <div id="progress-fill" class="progress-fill"></div>
-          </div>
-        </div>
-
-        <!-- Upcoming Deadlines & Study Plan -->
-        <div class="two-col-grid">
-          <div class="card">
-            <h3>⏰ Upcoming Deadlines</h3>
-            <ul id="upcoming-deadlines-list" class="clean-list"></ul>
-          </div>
-          <div class="card">
-            <h3>📚 Study Routines</h3>
-            <ul id="dashboard-schedule-list" class="clean-list"></ul>
-          </div>
-        </div>
-      </section>
-
-      <!-- VIEW 2: TASK MANAGEMENT -->
-      <section id="view-tasks" class="view-section hidden">
-        <div class="card">
-          <h3 id="task-form-title">Add New Academic Task</h3>
-          <form id="task-form" class="grid-form">
-            <input type="hidden" id="task-id" />
-            <div class="form-group">
-              <label for="task-title">Task / Assignment Title</label>
-              <input type="text" id="task-title" placeholder="e.g., Capstone Chapter 2 Draft" required />
-            </div>
-            <div class="form-group">
-              <label for="task-subject">Subject / Course</label>
-              <input type="text" id="task-subject" placeholder="e.g., Capstone Project 1" required />
-            </div>
-            <div class="form-group">
-              <label for="task-deadline">Due Date</label>
-              <input type="date" id="task-deadline" required />
-            </div>
-            <div class="form-group">
-              <label for="task-priority">Priority Level</label>
-              <select id="task-priority">
-                <option value="High">High</option>
-                <option value="Medium" selected>Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="task-status">Status</label>
-              <select id="task-status">
-                <option value="Pending">Pending</option>
-                <option value="Ongoing">Ongoing</option>
-                <option value="Completed">Completed</option>
-              </select>
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="btn btn-primary" id="task-submit-btn">Save Task</button>
-              <button type="button" class="btn btn-outline hidden" id="task-cancel-btn" onclick="resetTaskForm()">Cancel</button>
-            </div>
-          </form>
-        </div>
-
-        <!-- Filters & Task Table -->
-        <div class="card">
-          <div class="card-header">
-            <h3>Task List</h3>
-            <div class="filters">
-              <select id="filter-status" onchange="renderTasks()">
-                <option value="All">All Statuses</option>
-                <option value="Pending">Pending</option>
-                <option value="Ongoing">Ongoing</option>
-                <option value="Completed">Completed</option>
-              </select>
-              <select id="filter-priority" onchange="renderTasks()">
-                <option value="All">All Priorities</option>
-                <option value="High">High</option>
-                <option value="Medium">Medium</option>
-                <option value="Low">Low</option>
-              </select>
-            </div>
-          </div>
-          <div class="table-responsive">
-            <table>
-              <thead>
-                <tr>
-                  <th>Task &amp; Subject</th>
-                  <th>Due Date</th>
-                  <th>Priority</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="task-table-body"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <!-- VIEW 3: STUDY SCHEDULE PLANNER -->
-      <section id="view-schedule" class="view-section hidden">
-        <div class="card">
-          <h3>Plan Study Session</h3>
-          <form id="schedule-form" class="grid-form">
-            <div class="form-group">
-              <label for="sched-day">Day of Week</label>
-              <select id="sched-day">
-                <option value="Monday">Monday</option>
-                <option value="Tuesday">Tuesday</option>
-                <option value="Wednesday">Wednesday</option>
-                <option value="Thursday">Thursday</option>
-                <option value="Friday">Friday</option>
-                <option value="Saturday">Saturday</option>
-                <option value="Sunday">Sunday</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="sched-time">Time Slot</label>
-              <input type="text" id="sched-time" placeholder="e.g., 6:00 PM - 8:00 PM" required />
-            </div>
-            <div class="form-group">
-              <label for="sched-subject">Subject / Topic</label>
-              <input type="text" id="sched-subject" placeholder="e.g., System Architecture Review" required />
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="btn btn-primary">Add to Schedule</button>
-            </div>
-          </form>
-        </div>
-
-        <div class="card">
-          <h3>Weekly Study Timetable</h3>
-          <div id="schedule-grid" class="schedule-grid"></div>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <script src="script.js"></script>
-</body>
-</html>
+renderAll();
